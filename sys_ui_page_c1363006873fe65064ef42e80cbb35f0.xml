@@ -289,18 +289,42 @@ function onUserSelectionChange() {
 /**
  * Determine if the action performed was from platform or on workspace
  * Added for workspace compatibility
+ * Improved to auto-detect workspace mode even without URL parameter
  */
 function isActionFromWorkspace() {
-	var fromWorkspace = getParmVal('from_workspace') === "true";
+	var fromWorkspace = false;
+
+	// Method 1: Check URL parameter (if explicitly passed)
+	var urlParam = getParmVal('from_workspace');
+	if (urlParam === "true") {
+		fromWorkspace = true;
+	}
+
+	// Method 2: Check if we're in an iframe (typical for workspace modals)
+	if (!fromWorkspace && window.parent && window.parent !== window) {
+		fromWorkspace = true;
+		console.log('Workspace detected: running in iframe');
+	}
+
+	// Method 3: Check for ServiceNow workspace indicators
+	if (!fromWorkspace && typeof window.NOW !== 'undefined') {
+		if (window.NOW.isPolarisEnabled === 'true' || window.NOW.isPolarisEnabled === true) {
+			fromWorkspace = true;
+			console.log('Workspace detected: Polaris enabled');
+		}
+	}
+
+	console.log('isActionFromWorkspace result:', fromWorkspace);
 
 	// Set the hidden input field that determined whether or not the
 	// submission was from platform or workspace
 	var c = gel('from_workspace');
-
-	if (fromWorkspace)
-		c.value = "true";
-	else
-		c.value = "false";
+	if (c) {
+		if (fromWorkspace)
+			c.value = "true";
+		else
+			c.value = "false";
+	}
 
 	return fromWorkspace;
 }
@@ -321,26 +345,84 @@ function getParmVal(name) {
 
 /**
  * Close the dialog - works in both platform and workspace modes
+ * Multiple methods attempted to ensure compatibility
  */
 function closeDialog() {
 	console.log('closeDialog called');
 
 	if (isActionFromWorkspace()) {
-		console.log('Closing workspace dialog');
-		// In workspace mode, use window.close() or post message to parent
+		console.log('Closing workspace dialog - trying multiple methods');
+		var closed = false;
+
+		// Method 1: Try GlideModal.get() for modern workspaces
 		try {
-			// Try to close the window/iframe
-			if (window.parent && window.parent !== window) {
-				// We're in an iframe, try posting a message
+			if (typeof GlideModal !== 'undefined' && GlideModal.get) {
+				console.log('Trying GlideModal.get().destroy()');
+				GlideModal.get().destroy();
+				closed = true;
+				console.log('Successfully closed with GlideModal');
+			}
+		} catch (e) {
+			console.log('GlideModal.get() failed:', e);
+		}
+
+		// Method 2: Try g_form.closeDialog() if available
+		if (!closed) {
+			try {
+				if (typeof g_form !== 'undefined' && g_form && typeof g_form.closeDialog === 'function') {
+					console.log('Trying g_form.closeDialog()');
+					g_form.closeDialog();
+					closed = true;
+					console.log('Successfully closed with g_form.closeDialog');
+				}
+			} catch (e) {
+				console.log('g_form.closeDialog() failed:', e);
+			}
+		}
+
+		// Method 3: Post message to parent window for workspace close
+		if (!closed && window.parent && window.parent !== window) {
+			try {
+				console.log('Posting message to parent window');
+				window.parent.postMessage({
+					type: 'glide:modal:close',
+					source: 'coreone_deactivate_dialog'
+				}, '*');
+				// Also try alternate message format
 				window.parent.postMessage({
 					type: 'dialog.close',
 					source: 'coreone_deactivate_dialog'
 				}, '*');
+				closed = true;
+				console.log('Posted close message to parent');
+			} catch (e) {
+				console.log('postMessage failed:', e);
 			}
-			// Also try window.close as fallback
-			window.close();
-		} catch (e) {
-			console.error('Error closing workspace dialog:', e);
+		}
+
+		// Method 4: Try window.close()
+		if (!closed) {
+			try {
+				console.log('Trying window.close()');
+				window.close();
+				console.log('Called window.close()');
+			} catch (e) {
+				console.log('window.close() failed:', e);
+			}
+		}
+
+		// Method 5: As last resort, try platform methods in workspace
+		if (!closed) {
+			console.log('Workspace close methods failed, trying platform methods as fallback');
+			try {
+				if (typeof GlideDialogWindow !== 'undefined') {
+					GlideDialogWindow.get().destroy();
+				} else if (typeof g_dialog !== 'undefined' && g_dialog) {
+					g_dialog.destroy();
+				}
+			} catch (e) {
+				console.error('All dialog closing methods failed:', e);
+			}
 		}
 	} else {
 		console.log('Closing platform dialog');
