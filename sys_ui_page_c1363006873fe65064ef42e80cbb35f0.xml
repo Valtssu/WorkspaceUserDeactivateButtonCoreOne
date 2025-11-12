@@ -111,7 +111,7 @@
 	
 	ga.getXMLAnswer(function(answer) {
 		console.log('AJAX response:', answer);
-		
+
 		// Hide loading indicator safely
 		if (loadingIndicator) {
 			loadingIndicator.style.display = 'none';
@@ -119,38 +119,60 @@
 		if (dialogButtons) {
 			dialogButtons.style.display = 'table-row';
 		}
-		
-		  if (answer && answer.indexOf('success:') === 0) {
-      var parts = answer.split(':');
-      var ritmNumber = parts[1];
 
-      console.log('Success! RITM created:', ritmNumber);  // Silent logging
+		// Re-enable buttons in case of error
+		if (okButton) {
+			okButton.disabled = false;
+			okButton.style.opacity = '1';
+			okButton.style.cursor = 'pointer';
+		}
+		if (cancelButton) {
+			cancelButton.disabled = false;
+			cancelButton.style.opacity = '1';
+			cancelButton.style.cursor = 'pointer';
+		}
 
-      // OLD CODE - doesn't work properly in workspaces
-      // if (typeof g_dialog !== 'undefined' && g_dialog) {
-      //     g_dialog.destroy();
-      // }
+		if (answer && answer.indexOf('success:') === 0) {
+			var parts = answer.split(':');
+			var ritmNumber = parts[1];
 
-      // NEW CODE - workspace compatible
-      // Close dialog based on platform vs workspace
-      if (!isActionFromWorkspace()) {
-          // Platform view - use GlideDialogWindow
-          if (typeof g_dialog !== 'undefined' && g_dialog) {
-              g_dialog.destroy();
-          }
-      }
-      // In workspace mode, dialog will close automatically after success
+			console.log('Success! RITM created:', ritmNumber);  // Silent logging
 
-      if (incidentId && window.parent) {
-          window.parent.location.href = '/incident.do?sys_id=' + incidentId;
-      }
-  }
+			// OLD CODE - doesn't work properly in workspaces
+			// if (typeof g_dialog !== 'undefined' && g_dialog) {
+			//     g_dialog.destroy();
+			// }
+			// if (!isActionFromWorkspace()) {
+			//     if (typeof g_dialog !== 'undefined' && g_dialog) {
+			//         g_dialog.destroy();
+			//     }
+			// }
+
+			// NEW CODE - uses closeDialog helper for both modes
+			closeDialog();
+
+			// OLD REDIRECT CODE - might not work in workspaces
+			// if (incidentId && window.parent) {
+			//     window.parent.location.href = '/incident.do?sys_id=' + incidentId;
+			// }
+
+			// Note: Incident redirect removed to allow dialog to close properly
+			// The incident should already have work notes updated by the backend
+		} else {
+			// Handle error responses
+			console.error('AJAX call failed or returned error:', answer);
+			var errorMessage = answer || 'Failed to create deactivation request';
+			if (errorMessage.indexOf('error:') === 0) {
+				errorMessage = errorMessage.substring(6);
+			}
+			alert(getMessage('Error') + ': ' + errorMessage);
+		}
 	});
 }
 
 /**
  * Custom cancel function with workspace compatibility
- * Only destroys the dialog window when NOT in workspace mode
+ * Closes dialog in both platform and workspace modes
  */
 function cancel() {
 	console.log('cancel called');
@@ -159,13 +181,12 @@ function cancel() {
 	// if (typeof g_dialog !== 'undefined' && g_dialog) {
 	//     g_dialog.destroy();
 	// }
+	// if (!isActionFromWorkspace()) {
+	//     GlideDialogWindow.get().destroy();
+	// }
 
-	// NEW CODE - workspace compatible
-	// Only destroy the window when user is on platform view
-	if (!isActionFromWorkspace()) {
-		GlideDialogWindow.get().destroy();
-	}
-	// In workspace mode, the dialog will close automatically
+	// NEW CODE - uses closeDialog helper for both modes
+	closeDialog();
 }
 
 function toggleOtherReason() {
@@ -296,6 +317,44 @@ function getParmVal(name) {
 		return decodeURI(url[name]);
 	}
 	return;
+}
+
+/**
+ * Close the dialog - works in both platform and workspace modes
+ */
+function closeDialog() {
+	console.log('closeDialog called');
+
+	if (isActionFromWorkspace()) {
+		console.log('Closing workspace dialog');
+		// In workspace mode, use window.close() or post message to parent
+		try {
+			// Try to close the window/iframe
+			if (window.parent && window.parent !== window) {
+				// We're in an iframe, try posting a message
+				window.parent.postMessage({
+					type: 'dialog.close',
+					source: 'coreone_deactivate_dialog'
+				}, '*');
+			}
+			// Also try window.close as fallback
+			window.close();
+		} catch (e) {
+			console.error('Error closing workspace dialog:', e);
+		}
+	} else {
+		console.log('Closing platform dialog');
+		// Platform view - use traditional methods
+		try {
+			if (typeof GlideDialogWindow !== 'undefined') {
+				GlideDialogWindow.get().destroy();
+			} else if (typeof g_dialog !== 'undefined' && g_dialog) {
+				g_dialog.destroy();
+			}
+		} catch (e) {
+			console.error('Error closing platform dialog:', e);
+		}
+	}
 }]]></client_script>
 <description/>
 <direct>false</direct>
