@@ -4,28 +4,31 @@
 <category>general</category>
 <client_script><![CDATA[function submitDeactivationRequest() {
 	console.log('submitDeactivationRequest called');
-	
+
+	// Detect if we're in workspace mode
+	isActionFromWorkspace();
+
 	var sys_user = gel(gel('target_user_query').value);
 	var display = gel('sys_display.' + gel('target_user_query').value);
-	
+
 	// Check if user is selected
 	if (!sys_user || !sys_user.value || sys_user.value == '') {
 		alert(getMessage('Please select a user for deactivation'));
 		return;
 	}
-	
+
 	var reason = gel('deactivation_reason').value;
 	if (!reason) {
 		alert(getMessage('Please select a deactivation reason'));
 		return;
 	}
-	
+
 	var deactivate_at = gel('deactivate_at').value;
 	if (!deactivate_at) {
 		alert(getMessage('Please specify deactivation time'));
 		return;
 	}
-	
+
 	console.log('Validation passed, proceeding with AJAX call');
 
 	// Disable submit button to prevent double-clicks
@@ -123,10 +126,20 @@
 
       console.log('Success! RITM created:', ritmNumber);  // Silent logging
 
-      // Close dialog and redirect immediately
-      if (typeof g_dialog !== 'undefined' && g_dialog) {
-          g_dialog.destroy();
+      // OLD CODE - doesn't work properly in workspaces
+      // if (typeof g_dialog !== 'undefined' && g_dialog) {
+      //     g_dialog.destroy();
+      // }
+
+      // NEW CODE - workspace compatible
+      // Close dialog based on platform vs workspace
+      if (!isActionFromWorkspace()) {
+          // Platform view - use GlideDialogWindow
+          if (typeof g_dialog !== 'undefined' && g_dialog) {
+              g_dialog.destroy();
+          }
       }
+      // In workspace mode, dialog will close automatically after success
 
       if (incidentId && window.parent) {
           window.parent.location.href = '/incident.do?sys_id=' + incidentId;
@@ -135,6 +148,25 @@
 	});
 }
 
+/**
+ * Custom cancel function with workspace compatibility
+ * Only destroys the dialog window when NOT in workspace mode
+ */
+function cancel() {
+	console.log('cancel called');
+
+	// OLD CODE - doesn't work in workspaces
+	// if (typeof g_dialog !== 'undefined' && g_dialog) {
+	//     g_dialog.destroy();
+	// }
+
+	// NEW CODE - workspace compatible
+	// Only destroy the window when user is on platform view
+	if (!isActionFromWorkspace()) {
+		GlideDialogWindow.get().destroy();
+	}
+	// In workspace mode, the dialog will close automatically
+}
 
 function toggleOtherReason() {
     var reason = gel('deactivation_reason');
@@ -231,6 +263,39 @@ function onUserSelectionChange() {
             }
         }
     }
+}
+
+/**
+ * Determine if the action performed was from platform or on workspace
+ * Added for workspace compatibility
+ */
+function isActionFromWorkspace() {
+	var fromWorkspace = getParmVal('from_workspace') === "true";
+
+	// Set the hidden input field that determined whether or not the
+	// submission was from platform or workspace
+	var c = gel('from_workspace');
+
+	if (fromWorkspace)
+		c.value = "true";
+	else
+		c.value = "false";
+
+	return fromWorkspace;
+}
+
+/**
+ * Helper function to get the parameter values from the URL
+ * Added for workspace compatibility
+ *
+ * @param {string} name of the url parameter to fetch
+ */
+function getParmVal(name) {
+	var url = document.URL.parseQuery();
+	if (url[name]) {
+		return decodeURI(url[name]);
+	}
+	return;
 }]]></client_script>
 <description/>
 <direct>false</direct>
@@ -251,6 +316,7 @@ function onUserSelectionChange() {
 
             <input type="hidden" name="incident_id" id="incident_id" value="${sysparm_incident_id}" />
             <input type="hidden" id="action_type" name="action_type" value="deactivate" />
+            <input type="hidden" id="from_workspace" name="from_workspace" value="false"/>
 
             <div style="padding: 10px;">
                 <h4 style="margin-bottom: 15px; color: #d93f3a;">
@@ -366,10 +432,10 @@ function onUserSelectionChange() {
                 </table>
             </div>
 
-            <!-- Dialog Buttons - FIXED -->
+            <!-- Dialog Buttons - FIXED for workspace compatibility -->
             <tr id="dialog_buttons">
                 <td colspan="2" align="right" style="padding: 15px; border-top: 1px solid #ddd; background-color: #f9f9f9;">
-                    <g:dialog_buttons_ok_cancel ok="submitDeactivationRequest(); return false;" ok_id="ok_button" cancel_type="button" />
+                    <g:dialog_buttons_ok_cancel ok="submitDeactivationRequest(); return false;" ok_id="ok_button" cancel="cancel();" cancel_type="button" />
                 </td>
             </tr>
             <script>
