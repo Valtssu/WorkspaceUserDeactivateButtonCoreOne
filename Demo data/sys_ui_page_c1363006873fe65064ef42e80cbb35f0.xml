@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<unload unload_date="2025-11-12 13:40:50">
+<sys_ui_page action="INSERT_OR_UPDATE">
+<category>general</category>
+<client_script><![CDATA[function submitDeactivationRequest() {
+	console.log('submitDeactivationRequest called');
+	
+	var sys_user = gel(gel('target_user_query').value);
+	var display = gel('sys_display.' + gel('target_user_query').value);
+	
+	// Check if user is selected
+	if (!sys_user || !sys_user.value || sys_user.value == '') {
+		alert(getMessage('Please select a user for deactivation'));
+		return;
+	}
+	
+	var reason = gel('deactivation_reason').value;
+	if (!reason) {
+		alert(getMessage('Please select a deactivation reason'));
+		return;
+	}
+	
+	var deactivate_at = gel('deactivate_at').value;
+	if (!deactivate_at) {
+		alert(getMessage('Please specify deactivation time'));
+		return;
+	}
+	
+	console.log('Validation passed, proceeding with AJAX call');
+
+	// Disable submit button to prevent double-clicks
+	var okButton = gel('ok_button');
+	if (okButton) {
+		okButton.disabled = true;
+		okButton.style.opacity = '0.5';
+		okButton.style.cursor = 'not-allowed';
+	}
+
+	// Disable cancel button to prevent cancellation during submission
+	var cancelButton = gel('cancel_button');
+	if (cancelButton) {
+		cancelButton.disabled = true;
+		cancelButton.style.opacity = '0.5';
+		cancelButton.style.cursor = 'not-allowed';
+	}
+
+	// Show loading indicator with null check
+	var loadingIndicator = gel('loading_indicator');
+	var dialogButtons = gel('dialog_buttons');
+
+	if (loadingIndicator) {
+		loadingIndicator.style.display = 'table-row';
+	} else {
+		console.warn('Loading indicator element not found');
+	}
+
+	if (dialogButtons) {
+		dialogButtons.style.display = 'none';
+	} else {
+		console.warn('Dialog buttons element not found');
+	}
+	
+	// Get user details safely
+	var userName = '';
+	var userEmail = '';
+	var targetUserId = '';
+	
+	var nameElement = gel('display_name');
+	var emailElement = gel('display_email');
+	var userIdElement = gel('display_user_id');
+	
+	if (nameElement) {
+		userName = nameElement.innerHTML || display.value;
+	}
+	if (emailElement) {
+		userEmail = emailElement.innerHTML || '';
+	}
+	if (userIdElement) {
+		targetUserId = userIdElement.innerHTML || '';
+	}
+	
+	var incidentElement = gel('incident_id');
+	var incidentId = incidentElement ? incidentElement.value || '' : '';
+	
+	console.log('Parameters:', {
+		selectedUserId: sys_user.value,
+		userName: userName,
+		userEmail: userEmail,
+		targetUserId: targetUserId,
+		reason: reason,
+		incidentId: incidentId
+	});
+	
+	// Call Script Include via AJAX
+	var ga = new GlideAjax('CoreOneDeactivationAjax');
+	ga.addParam('sysparm_name', 'createDeactivationRequest');
+	ga.addParam('sysparm_selected_user_id', sys_user.value);
+	ga.addParam('sysparm_target_user_id', targetUserId);
+	ga.addParam('sysparm_user_name', userName);
+	ga.addParam('sysparm_user_email', userEmail);
+	ga.addParam('sysparm_reason', reason);
+	ga.addParam('sysparm_other_reason', gel('other_reason') ? gel('other_reason').value || '' : '');
+	ga.addParam('sysparm_deactivate_at', deactivate_at);
+	ga.addParam('sysparm_additional_notes', gel('additional_notes') ? gel('additional_notes').value || '' : '');
+	ga.addParam('sysparm_incident_id', incidentId);
+	
+	console.log('Making AJAX call...');
+	
+	ga.getXMLAnswer(function(answer) {
+		console.log('AJAX response:', answer);
+		
+		// Hide loading indicator safely
+		if (loadingIndicator) {
+			loadingIndicator.style.display = 'none';
+		}
+		if (dialogButtons) {
+			dialogButtons.style.display = 'table-row';
+		}
+		
+		  if (answer && answer.indexOf('success:') === 0) {
+      var parts = answer.split(':');
+      var ritmNumber = parts[1];
+
+      console.log('Success! RITM created:', ritmNumber);  // Silent logging
+
+      // Close dialog and redirect immediately
+      if (typeof g_dialog !== 'undefined' && g_dialog) {
+          g_dialog.destroy();
+      }
+
+      if (incidentId && window.parent) {
+          window.parent.location.href = '/incident.do?sys_id=' + incidentId;
+      }
+  }
+	});
+}
+
+
+function toggleOtherReason() {
+    var reason = gel('deactivation_reason');
+    var otherGroup = gel('other_reason_group');
+    if (reason && otherGroup) {
+        if (reason.value === 'other') {
+            otherGroup.style.display = 'table-row';
+        } else {
+            otherGroup.style.display = 'none';
+            var otherField = gel('other_reason');
+            if (otherField) otherField.value = '';
+        }
+    }
+}
+
+function setCurrentDateTime() {
+    var dateField = gel('deactivate_at');
+    if (dateField) {
+        var now = new Date();
+        var year = now.getFullYear();
+        var month = (now.getMonth() + 1);
+        var day = now.getDate();
+        var hours = now.getHours();
+        var minutes = now.getMinutes();
+
+        if (month < 10) month = '0' + month;
+        if (day < 10) day = '0' + day;
+        if (hours < 10) hours = '0' + hours;
+        if (minutes < 10) minutes = '0' + minutes;
+
+        var formatted = year + '-' + month + '-' + day + 'T' + hours + ':' + minutes;
+        dateField.value = formatted;
+    }
+}
+
+function populateUserDetails(userSysId) {
+    if (userSysId) {
+        var ga = new GlideAjax('CoreOneDeactivationAjax');
+        ga.addParam('sysparm_name', 'getUserDetails');
+        ga.addParam('sysparm_user_id', userSysId);
+
+        ga.getXMLAnswer(function(answer) {
+            try {
+                var userData = JSON.parse(answer);
+                var nameField = gel('display_name');
+                var emailField = gel('display_email');
+                var userIdField = gel('display_user_id');
+                var deptField = gel('display_department');
+                var companyField = gel('display_company');
+                var deptRow = gel('display_department_row');
+                var companyRow = gel('display_company_row');
+                var detailsSection = gel('user_details_section');
+
+                if (nameField) nameField.innerHTML = userData.name || '';
+                if (emailField) emailField.innerHTML = userData.email || '';
+                if (userIdField) userIdField.innerHTML = userData.user_id || '';
+
+                if (userData.department && deptField && deptRow) {
+                    deptField.innerHTML = userData.department;
+                    deptRow.style.display = 'table-row';
+                }
+
+                if (userData.company && companyField && companyRow) {
+                    companyField.innerHTML = userData.company;
+                    companyRow.style.display = 'table-row';
+                }
+
+                if (detailsSection) detailsSection.style.display = 'table-row';
+            } catch (e) {
+                alert(getMessage('Error retrieving user details') + ': ' + e.message);
+            }
+        });
+    }
+}
+
+function onUserSelectionChange() {
+    var queryField = gel('target_user_query');
+    if (queryField) {
+        var sys_user = gel(queryField.value);
+        if (sys_user && sys_user.value) {
+            populateUserDetails(sys_user.value);
+
+            // Force close the dropdown by blurring the display field
+            var displayField = gel('sys_display.' + queryField.value);
+            if (displayField) {
+                setTimeout(function() {
+                    displayField.blur();
+                    // Hide any open suggestion dropdowns
+                    var suggestions = document.querySelectorAll('.ac_results');
+                    for (var i = 0; i < suggestions.length; i++) {
+                        suggestions[i].style.display = 'none';
+                    }
+                }, 100);
+            }
+        }
+    }
+}]]></client_script>
+<description/>
+<direct>false</direct>
+<endpoint/>
+<html><![CDATA[<j:jelly trim="false" xmlns:j="jelly:core" xmlns:g="glide" xmlns:j2="null" xmlns:g2="null">
+    <g:evaluate jelly="true" var="jvar_has_role">
+        var has_role = gs.hasRole('abraxas_sec_inc') || gs.hasRole('admin');
+        has_role;
+    </g:evaluate>
+    <j:if test="${!has_role}">
+        <div style="padding: 20px; text-align: center;">
+            <h3>${gs.getMessage("Access Denied")}</h3>
+            <p>${gs.getMessage("You do not have permission to access CoreOne user deactivation functionality")}</p>
+        </div>
+    </j:if>
+    <j:if test="${has_role}">
+        <g:ui_form>
+
+            <input type="hidden" name="incident_id" id="incident_id" value="${sysparm_incident_id}" />
+            <input type="hidden" id="action_type" name="action_type" value="deactivate" />
+
+            <div style="padding: 10px;">
+                <h4 style="margin-bottom: 15px; color: #d93f3a;">
+                    <i class="icon-user" style="margin-right: 6px;"></i>
+                    ${gs.getMessage('CoreOne User Deactivation')}
+                </h4>
+
+                <table width="100%" cellpadding="5" cellspacing="0">
+
+                    <!-- User Search Section -->
+                    <tr>
+                        <td style="width: 120px; vertical-align: top; padding-top: 8px;">
+                            <label for="target_user_query" style="font-weight: bold;">
+                                <i class="icon-search" style="margin-right: 5px;"></i>
+                                ${gs.getMessage('Search User')}: <span style="color: red;">*</span>
+                            </label>
+                        </td>
+                        <td>
+                            <j:set var="jvar_target_user_query" value="QUERY:active=true^locked_out=false" />
+                            <input id="target_user_query" type="hidden" value="${jvar_target_user_query}" />
+                            <g:ui_reference name="${jvar_target_user_query}" table="sys_user" ref_qual_elements="name,user_name,email" onchange="onUserSelectionChange()" />
+                            <p style="font-size: 12px; color: #888; margin-top: 5px;">${gs.getMessage('Search by name')}</p>
+                        </td>
+                    </tr>
+
+                    <!-- User Details Section -->
+                    <tr id="user_details_section" style="display: none;">
+                        <td style="vertical-align: top;">
+                            <label style="font-weight: bold; color: #0066cc;">${gs.getMessage('Selected User')}:</label>
+                        </td>
+                        <td>
+                            <div style="background-color: #e6f3ff; padding: 10px; border-radius: 4px; border-left: 4px solid #0066cc;">
+                                <div><strong>${gs.getMessage('Name')}:</strong> <span id="display_name"></span></div>
+                                <div><strong>${gs.getMessage('Email')}:</strong> <span id="display_email"></span></div>
+                                <div><strong>${gs.getMessage('User ID')}:</strong> <span id="display_user_id"></span></div>
+                                <div id="display_department_row" style="display: none;"><strong>${gs.getMessage('Department')}:</strong> <span id="display_department"></span></div>
+                                <div id="display_company_row" style="display: none;"><strong>${gs.getMessage('Company')}:</strong> <span id="display_company"></span></div>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Spacing -->
+                    <tr>
+                        <td colspan="2" style="padding: 10px;"></td>
+                    </tr>
+
+                    <!-- Deactivation Reason -->
+                    <tr>
+                        <td style="vertical-align: top;">
+                            <label for="deactivation_reason" style="font-weight: bold;">
+                                ${gs.getMessage('Reason')}: <span style="color: red;">*</span>
+                            </label>
+                        </td>
+                        <td>
+                            <select id="deactivation_reason" name="deactivation_reason" style="width: 100%; padding: 5px;" onchange="toggleOtherReason()" required="true">
+                                <option value="">-- ${gs.getMessage('Select deactivation reason')} --</option>
+                                <option value="security_breach">${gs.getMessage('Security Breach')}</option>
+                                <option value="employee_termination">${gs.getMessage('Employee Termination')}</option>
+                                <option value="access_review">${gs.getMessage('Access Review Finding')}</option>
+                                <option value="suspicious_activity">${gs.getMessage('Suspicious Activity')}</option>
+                                <option value="policy_violation">${gs.getMessage('Policy Violation')}</option>
+                                <option value="other">${gs.getMessage('Other (specify below)')}</option>
+                            </select>
+                        </td>
+                    </tr>
+
+                    <!-- Other Reason (conditional) -->
+                    <tr id="other_reason_group" style="display: none;">
+                        <td style="vertical-align: top;">
+                            <label for="other_reason" style="font-weight: bold;">${gs.getMessage('Specify Reason')}:</label>
+                        </td>
+                        <td>
+                            <textarea id="other_reason" name="other_reason" style="width: 100%; padding: 5px;" rows="3" placeholder="${gs.getMessage('Please specify the reason for deactivation...')}"></textarea>
+                        </td>
+                    </tr>
+
+                    <!-- Deactivation Date/Time -->
+                    <tr>
+                        <td style="vertical-align: top;">
+                            <label for="deactivate_at" style="font-weight: bold;">
+                                ${gs.getMessage('Deactivate At')}: <span style="color: red;">*</span>
+                            </label>
+                        </td>
+                        <td>
+                            <input type="datetime-local" id="deactivate_at" name="deactivate_at" style="width: 100%; padding: 5px;" required="true" />
+                            <p style="font-size: 12px; color: #888; margin-top: 5px;">
+                                ${gs.getMessage('Default is current time. Past times will execute ASAP. Future times schedule the deactivation.')}
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Additional Notes -->
+                    <tr>
+                        <td style="vertical-align: top;">
+                            <label for="additional_notes" style="font-weight: bold;">${gs.getMessage('Additional Notes')}:</label>
+                        </td>
+                        <td>
+                            <textarea id="additional_notes" name="additional_notes" style="width: 100%; padding: 5px;" rows="4" placeholder="${gs.getMessage('Any additional context, ticket numbers, or notes...')}"></textarea>
+                        </td>
+                    </tr>
+
+                    <!-- Spacing -->
+                    <tr>
+                        <td colspan="2" style="padding: 15px;"></td>
+                    </tr>
+                    <!-- Loading Indicator -->
+                    <tr id="loading_indicator" style="display:none;">
+                        <td colspan="2" align="center" style="padding: 20px;">
+                            <span>${gs.getMessage('Creating CoreOne deactivation request...')}</span>
+                        </td>
+                    </tr>
+
+                </table>
+            </div>
+
+            <!-- Dialog Buttons - FIXED -->
+            <tr id="dialog_buttons">
+                <td colspan="2" align="right" style="padding: 15px; border-top: 1px solid #ddd; background-color: #f9f9f9;">
+                    <g:dialog_buttons_ok_cancel ok="submitDeactivationRequest(); return false;" ok_id="ok_button" cancel_type="button" />
+                </td>
+            </tr>
+            <script>
+                // Focus on user search field when dialog opens
+                setTimeout(function() {
+                    var userField = gel("sys_display.${jvar_target_user_query}");
+                    if (userField) {
+                        userField.focus();
+                    }
+                    setCurrentDateTime();
+
+                    // Change button text from "OK" to "Submit Request"
+                    var okButton = gel('ok_button');
+                    if (okButton) {
+                        okButton.innerHTML = '${gs.getMessage("Submit Request")}';
+                        okButton.value = '${gs.getMessage("Submit Request")}';
+                    }
+                }, 500);
+            </script>
+
+
+        </g:ui_form>
+    </j:if>
+</j:jelly>]]></html>
+<name>coreone_deactivate_dialog</name>
+<processing_script><![CDATA[// Set window properties for dialog
+try {
+    var incidentId = '';
+    var incidentNumber = 'Unknown';
+    
+    // Try to get incident ID from URL parameters
+    if (typeof sysparm_incident_id !== 'undefined') {
+        incidentId = sysparm_incident_id;
+        
+        // Get incident details for title
+        var incident = new GlideRecord('incident');
+        if (incident.get(incidentId)) {
+            incidentNumber = incident.number.toString();
+        }
+    }
+    
+    // Set dialog properties (this works without RP)
+    if (typeof window !== 'undefined' && window.name) {
+        document.title = 'CoreOne User Deactivation - ' + incidentNumber;
+    }
+    
+} catch (e) {
+    // Ignore errors in window setup
+}
+]]></processing_script>
+<sys_class_name>sys_ui_page</sys_class_name>
+<sys_created_by>vladimir.lensu</sys_created_by>
+<sys_created_on>2025-09-06 15:50:07</sys_created_on>
+<sys_id>c1363006873fe65064ef42e80cbb35f0</sys_id>
+<sys_mod_count>50</sys_mod_count>
+<sys_name>coreone_deactivate_dialog</sys_name>
+<sys_package display_value="Global" source="global">global</sys_package>
+<sys_policy/>
+<sys_scope display_value="Global">global</sys_scope>
+<sys_update_name>sys_ui_page_c1363006873fe65064ef42e80cbb35f0</sys_update_name>
+<sys_updated_by>vladimir.lensu</sys_updated_by>
+<sys_updated_on>2025-11-12 13:39:38</sys_updated_on>
+</sys_ui_page>
+</unload>
